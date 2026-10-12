@@ -1,0 +1,15 @@
+# Build output
+.build/
+*.app
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Local data and secrets never belong in the repository
+*.p12
+*.cer
+*.env
+.env*
+ledgers/
+*.unreadable-*.json

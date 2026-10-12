@@ -1,0 +1,1500 @@
+/* Paper — a trading desk that is trying to teach you something.
+   Dense where the numbers live, quiet everywhere else. */
+
+:root {
+  --bg:            #0b0d10;
+  --bg-raised:     #111419;
+  --bg-panel:      #14181e;
+  --bg-hover:      #1a1f26;
+  --bg-sunken:     #0e1114;
+
+  --line:          #1e242c;
+  --line-strong:   #2a3038;
+
+  --text:          #e7ebf0;
+  --text-dim:      #98a2b0;
+  /* 4.5:1 on every surface up to --bg-hover. It carries the labels, hints and
+     notes, so it is held to body-text contrast, not decoration contrast. */
+  --text-faint:    #7f8998;
+
+  --up:            #3fb27f;
+  --up-soft:       rgba(63, 178, 127, 0.13);
+  --down:          #d9605c;
+  --down-soft:     rgba(217, 96, 92, 0.13);
+  --down-ink:      #e4726e;   /* --down lifted to clear 4.5:1 on its own soft fill */
+  --flat:          #7d8794;
+
+  --accent:        #6ea8fe;
+  --accent-soft:   rgba(110, 168, 254, 0.13);
+  --warn:          #d9a441;
+  --warn-soft:     rgba(217, 164, 65, 0.12);
+
+  --radius:        10px;
+  --radius-sm:     7px;
+  --shadow:        0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+
+  --ease:          cubic-bezier(.22,.61,.36,1);
+  --fast:          140ms var(--ease);
+  --med:           240ms var(--ease);
+
+  --font: ui-sans-serif, -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { padding-bottom: 64px; }
+
+/* Financial data is unreadable without aligned digits. */
+.num, .tabular, td.num, .ticker-value, .stat-value, .metric-value, table { font-variant-numeric: tabular-nums; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+h1,h2,h3,h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+
+::selection { background: var(--accent-soft); }
+
+/* ------------------------------------------------------------------ boot */
+
+.boot {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; place-content: center; justify-items: center; gap: 10px;
+  background: var(--bg);
+  transition: opacity 320ms var(--ease);
+}
+.boot.is-gone { opacity: 0; pointer-events: none; }
+.boot-mark {
+  font-size: 26px; font-weight: 600; letter-spacing: -0.02em;
+  animation: pulse 1.7s ease-in-out infinite;
+}
+.boot-sub { color: var(--text-faint); font-size: 13px; }
+@keyframes pulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+
+/* ---------------------------------------------------------------- topbar */
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: 24px;
+  padding: 0 20px; height: 56px;
+  background: rgba(11,13,16,.86);
+  backdrop-filter: saturate(160%) blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.brand-mark { font-weight: 600; font-size: 15px; letter-spacing: -0.02em; }
+.sim-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--warn); background: var(--warn-soft);
+  border: 1px solid rgba(217,164,65,.22);
+  padding: 2px 7px; border-radius: 5px; cursor: help;
+}
+
+/* The money is the reason the header exists, so it is the one thing in the row
+   that does not compress. Everything to the right of it yields first — the regime
+   pills have an opaque background, so a ticker allowed to shrink under its own
+   nowrap content was not truncated, it was painted over. */
+.ticker { display: flex; gap: 26px; flex: 0 0 auto; }
+.ticker-item { display: flex; flex-direction: column; gap: 1px; }
+.ticker-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; }
+/* A krona amount is longer than a dollar one and carries a trailing symbol, so
+   these have to be allowed to be wide rather than allowed to wrap. */
+.ticker-value { font-size: 14px; font-weight: 600; font-family: var(--mono); white-space: nowrap; }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+/* Everything in this row except the regime strip is a control or a number that
+   has to stay readable, so the strip is the only item allowed to give up space —
+   and it gives it up by dropping words, not by being squeezed. A squeezed flex
+   item does not truncate nowrap children, it lets them hang outside its box, and
+   since these pills are opaque they then paint straight across the clocks and the
+   freshness dot. `overflow: hidden` is the guarantee that cannot happen again;
+   `fitTopbar` in app.js is what makes sure it never has to clip. */
+.topbar-right > :not(.regimes) { flex-shrink: 0; }
+.regimes { display: flex; gap: 7px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+
+.regime-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 500;
+  padding: 4px 9px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--bg-panel);
+  cursor: help; white-space: nowrap; flex-shrink: 0;
+}
+.regime-pill:hover, .regime-pill:focus-visible { border-color: var(--text-faint); outline: none; }
+
+/* The four widths of a regime read, in the order they are given up. What is lost
+   first is what the pill says twice: the dot is already green, red or amber, so
+   ": risk-on" is a caption for it. Then the market's name shortens, then goes,
+   and the dot carries the read alone. Every level keeps all three markets and the
+   full sentence on hover — none of them drops a market, because a strip that
+   quietly stops mentioning crypto is worse than one that shows it as a dot.
+   Which level is in force is decided by measurement, not by a viewport guess:
+   how much room this strip has depends on the account name and the krona
+   conversions beside it, and a media query cannot see either. */
+.regime-short { display: none; }
+.regimes[data-fit="compact"] .regime-state,
+.regimes[data-fit="mini"] .regime-state,
+.regimes[data-fit="dots"] .regime-state { display: none; }
+.regimes[data-fit="mini"] .regime-what,
+.regimes[data-fit="dots"] .regime-what { display: none; }
+.regimes[data-fit="mini"] .regime-short { display: inline; }
+.regimes[data-fit="dots"] .regime-pill { padding: 5px; }
+.regimes[data-fit="none"] { display: none; }
+
+/* The clocks shorten the same way, one rung further down the ladder — the ring
+   around an open exchange's dot is the part that answers the question. */
+.clock-short { display: none; }
+.topbar-right[data-clocks="short"] .clock-name { display: none; }
+.topbar-right[data-clocks="short"] .clock-short { display: inline; }
+.topbar-right[data-clocks="dots"] .clock-name,
+.topbar-right[data-clocks="dots"] .clock-short { display: none; }
+.topbar-right[data-clocks="dots"] .clock-pill { padding: 5px; }
+.topbar-right[data-extras="nofx"] .fx-note { display: none; }
+
+.regime-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--flat); flex-shrink: 0; }
+.regime-pill[data-r="bull"] .regime-dot { background: var(--up); box-shadow: 0 0 7px var(--up); }
+.regime-pill[data-r="bear"] .regime-dot { background: var(--down); box-shadow: 0 0 7px var(--down); }
+.regime-pill[data-r="chop"] .regime-dot { background: var(--warn); }
+
+.icon-btn {
+  display: grid; place-items: center;
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
+  background: var(--bg-panel); border: 1px solid var(--line-strong);
+  color: var(--text-dim); transition: all var(--fast);
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+.icon-btn.is-spinning svg { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+/* ------------------------------------------------------------------ tabs */
+
+.tabs {
+  position: sticky; top: 56px; z-index: 39;
+  display: flex; gap: 2px; padding: 0 20px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.tab {
+  position: relative; background: none; border: 0;
+  padding: 11px 13px; font-size: 13px; font-weight: 500;
+  color: var(--text-faint); transition: color var(--fast);
+}
+.tab:hover { color: var(--text-dim); }
+.tab.is-active { color: var(--text); }
+.tab-ink {
+  position: absolute; bottom: -1px; height: 2px; background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  transition: transform var(--med), width var(--med);
+  transform-origin: left;
+}
+
+/* ------------------------------------------------------------------ main */
+
+main { max-width: 1320px; margin: 0 auto; padding: 22px 20px 40px; }
+
+.view { animation: rise 300ms var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(7px) } to { opacity: 1; transform: none } }
+
+.section-head {
+  display: flex; align-items: baseline; gap: 12px;
+  margin: 0 0 12px;
+}
+.section-head h2 { font-size: 15px; }
+.section-head .hint { font-size: 12px; color: var(--text-faint); }
+.section-head .spacer { margin-left: auto; }
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.panel + .panel, .panel + .section-head, .grid + .section-head { margin-top: 26px; }
+.panel-pad { padding: 16px; }
+
+/* ----------------------------------------------------------------- stats */
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr)); gap: 1px; background: var(--line); }
+.stat {
+  background: var(--bg-panel); padding: 13px 15px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.stat-label { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; }
+.stat-value { font-size: 19px; font-weight: 600; font-family: var(--mono); letter-spacing: -0.02em; white-space: nowrap; }
+.stat-note { font-size: 11.5px; color: var(--text-faint); }
+
+.up { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--flat); }
+.dim { color: var(--text-dim); }
+.faint { color: var(--text-faint); }
+
+/* ---------------------------------------------------------------- charts */
+
+.chart-wrap { position: relative; padding: 14px 4px 4px; }
+.chart-wrap svg { display: block; width: 100%; overflow: visible; }
+.spark { width: 74px; height: 24px; display: block; }
+
+.chart-legend {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  padding: 0 14px 12px; font-size: 11.5px; color: var(--text-faint);
+}
+.chart-legend span { display: flex; align-items: center; gap: 6px; }
+.legend-key { width: 14px; height: 2px; border-radius: 2px; }
+
+.range-tabs { display: flex; gap: 3px; }
+.range-tabs button {
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  padding: 3px 8px; font-size: 11.5px; color: var(--text-faint);
+  transition: all var(--fast);
+}
+.range-tabs button:hover { color: var(--text-dim); background: var(--bg-hover); }
+.range-tabs button.is-active { color: var(--text); background: var(--bg-hover); border-color: var(--line-strong); }
+
+/* ---------------------------------------------------------------- tables */
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  /* Sticks to the panel's own scrollport — overflow-x:auto makes the panel a
+     scroll container on both axes, so a page-relative offset lands mid-table. */
+  position: sticky; top: 0; z-index: 2;
+  text-align: left; padding: 9px 12px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); background: var(--bg-sunken);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+thead th.sortable { cursor: pointer; user-select: none; transition: color var(--fast); }
+thead th.sortable:hover { color: var(--text-dim); }
+thead th .arrow { opacity: 0; margin-left: 3px; }
+thead th.is-sorted { color: var(--text); }
+thead th.is-sorted .arrow { opacity: 1; }
+th.right, td.right { text-align: right; }
+
+tbody tr { border-bottom: 1px solid var(--line); transition: background var(--fast); }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr.clickable:hover { background: var(--bg-hover); }
+td { padding: 10px 12px; }
+td.num { font-family: var(--mono); }
+
+.sym { display: flex; flex-direction: column; gap: 1px; }
+.sym-ticker { font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
+.sym-name { font-size: 11.5px; color: var(--text-faint); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 500;
+  padding: 2.5px 8px; border-radius: 5px;
+  background: var(--bg-hover); color: var(--text-dim);
+  border: 1px solid var(--line-strong); white-space: nowrap;
+}
+.chip.up { background: var(--up-soft); color: var(--up); border-color: rgba(63,178,127,.2); }
+.chip.down { background: var(--down-soft); color: var(--down-ink); border-color: rgba(217,96,92,.2); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); border-color: rgba(217,164,65,.2); }
+.chip.accent { background: var(--accent-soft); color: var(--accent); border-color: rgba(110,168,254,.2); }
+.chip.ghost { background: transparent; }
+
+/* conviction meter */
+.meter { display: flex; align-items: center; gap: 8px; }
+.meter-track { width: 46px; height: 4px; border-radius: 2px; background: var(--bg-hover); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 2px; transition: width var(--med); }
+.meter-num { font-family: var(--mono); font-size: 12px; width: 22px; }
+
+/* ------------------------------------------------------------- positions */
+
+.pos-row td { padding-top: 12px; padding-bottom: 12px; }
+
+.bracket {
+  --p: 0.5;
+  position: relative; height: 5px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--down-soft), var(--bg-hover) 45%, var(--up-soft));
+  min-width: 96px;
+}
+.bracket::after {
+  content: ''; position: absolute; top: 50%; left: calc(var(--p) * 100%);
+  width: 3px; height: 13px; border-radius: 2px; background: var(--text);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--bg-panel);
+  transition: left var(--med);
+}
+.bracket-labels { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); margin-top: 4px; font-family: var(--mono); }
+
+/* --------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 7px 13px; border-radius: var(--radius-sm);
+  background: var(--bg-hover); border: 1px solid var(--line-strong);
+  color: var(--text); font-size: 12.5px; font-weight: 500;
+  transition: all var(--fast); white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: #212832; border-color: #39414c; transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: none; }
+.btn:disabled { opacity: .42; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #08111f; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #85b7ff; border-color: #85b7ff; }
+.btn.danger { color: var(--down); border-color: rgba(217,96,92,.3); }
+.btn.danger:hover:not(:disabled) { background: var(--down-soft); }
+.btn.sm { padding: 5px 10px; font-size: 12px; }
+.btn.ghost { background: transparent; }
+
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ----------------------------------------------------------------- forms */
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; }
+/* Password fields belong here too. They were missing, which left the analyst's key
+   field rendering as a white box in a dark interface — the one input in the app
+   where looking like it belongs to some other page is actively alarming. */
+input[type="number"], input[type="text"], input[type="password"], select {
+  background: var(--bg-sunken); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm); padding: 8px 10px;
+  color: var(--text); font-family: var(--mono); font-size: 13px;
+  transition: border-color var(--fast), box-shadow var(--fast);
+  width: 100%;
+}
+input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input[type="range"] { accent-color: var(--accent); }
+
+/* ---------------------------------------------------------------- drawer */
+
+.drawer-scrim {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(4,6,9,.62); backdrop-filter: blur(2px);
+  animation: fade var(--med);
+}
+.drawer-scrim.is-closing { animation: fade var(--med) reverse; }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 51;
+  width: min(620px, 100vw);
+  background: var(--bg-raised); border-left: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+  overflow-y: auto; overscroll-behavior: contain;
+  animation: slide-in 320ms var(--ease);
+}
+.drawer.is-closing { animation: slide-in 240ms var(--ease) reverse; }
+@keyframes slide-in { from { transform: translateX(24px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.drawer-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 18px 20px 14px;
+  background: linear-gradient(var(--bg-raised) 76%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.drawer-body { padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 22px; }
+.drawer-title { font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+.drawer-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+.drawer-price { margin-left: auto; text-align: right; }
+.drawer-price .p { font-size: 21px; font-weight: 600; font-family: var(--mono); letter-spacing: -0.02em; }
+
+.close-btn {
+  background: none; border: 0; color: var(--text-faint); font-size: 22px;
+  line-height: 1; padding: 2px 6px; border-radius: 6px; transition: all var(--fast);
+}
+.close-btn:hover { color: var(--text); background: var(--bg-hover); }
+
+/* --------------------------------------------------------------- metrics */
+
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.metric { background: var(--bg-panel); padding: 10px 12px; }
+.metric-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; }
+.metric-value { font-size: 14px; font-weight: 500; font-family: var(--mono); margin-top: 2px; }
+
+/* score bars */
+.scores { display: flex; flex-direction: column; gap: 9px; }
+.score-row { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 11px; font-size: 12px; }
+.score-track { height: 5px; border-radius: 3px; background: var(--bg-sunken); overflow: hidden; }
+.score-fill { height: 100%; border-radius: 3px; transition: width 500ms var(--ease); }
+
+/* ----------------------------------------------------------- plan blocks */
+
+.plan {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+}
+.plan-cell { background: var(--bg-panel); padding: 12px 14px; }
+.plan-cell.entry { box-shadow: inset 3px 0 0 var(--accent); }
+.plan-cell.target { box-shadow: inset 3px 0 0 var(--up); }
+.plan-cell.stop { box-shadow: inset 3px 0 0 var(--down); }
+.plan-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+.plan-price { font-size: 17px; font-weight: 600; font-family: var(--mono); margin: 2px 0 1px; letter-spacing: -0.02em; }
+.plan-delta { font-size: 11.5px; font-family: var(--mono); }
+
+.prose { font-size: 13.5px; line-height: 1.65; color: var(--text-dim); }
+.prose strong { color: var(--text); font-weight: 600; }
+.prose p { margin: 0 0 10px; }
+.prose p:last-child { margin: 0; }
+
+.explain-block { border-left: 2px solid var(--line-strong); padding-left: 14px; }
+.explain-label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 5px;
+}
+
+.jargon { display: flex; flex-direction: column; gap: 8px; }
+.jargon-item { font-size: 12.5px; line-height: 1.55; }
+.jargon-term { color: var(--text); font-weight: 600; }
+
+.note {
+  display: flex; gap: 10px; padding: 12px 14px;
+  border-radius: var(--radius); font-size: 12.5px; line-height: 1.6;
+  background: var(--bg-sunken); border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+.note.warn { background: var(--warn-soft); border-color: rgba(217,164,65,.22); color: #e5c489; }
+.note.accent { background: var(--accent-soft); border-color: rgba(110,168,254,.22); color: #b9d3ff; }
+.note-icon { flex-shrink: 0; opacity: .8; }
+
+/* ------------------------------------------------------------ pick cards */
+
+.pick {
+  background: var(--bg-panel); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden;
+  transition: border-color var(--fast);
+}
+.pick:hover { border-color: var(--line-strong); }
+.pick + .pick { margin-top: 12px; }
+
+.pick-head {
+  display: flex; align-items: center; gap: 13px;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+.pick-rank {
+  display: grid; place-items: center; flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 7px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12px; font-weight: 700; font-family: var(--mono);
+}
+.pick-title { flex: 1; min-width: 0; }
+.pick-headline { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.pick-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
+.pick-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.alloc-bar { height: 4px; border-radius: 2px; background: var(--accent); opacity: .85; }
+
+/* ------------------------------------------------------------- empty/etc */
+
+.empty {
+  display: grid; place-items: center; gap: 8px; text-align: center;
+  padding: 52px 20px; color: var(--text-faint);
+}
+.empty-title { font-size: 14px; color: var(--text-dim); font-weight: 500; }
+.empty-sub { font-size: 12.5px; max-width: 420px; line-height: 1.6; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-hover) 25%, #1f252d 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%; animation: shimmer 1.5s infinite;
+  border-radius: 5px; height: 13px;
+}
+@keyframes shimmer { to { background-position: -200% 0 } }
+
+.spinner {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid var(--line-strong); border-top-color: var(--accent);
+  animation: spin .7s linear infinite; flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------- toasts */
+
+.toasts {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 90; display: flex; flex-direction: column-reverse; gap: 8px; align-items: center;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 15px; border-radius: var(--radius);
+  background: var(--bg-raised); border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow); font-size: 13px; max-width: 460px;
+  animation: toast-in 280ms var(--ease);
+}
+.toast.is-out { animation: toast-out 220ms var(--ease) forwards; }
+.toast.ok { border-left: 3px solid var(--up); }
+.toast.err { border-left: 3px solid var(--down); }
+/* A result that is neither a gain nor a fault: a stop filling, a manual close
+   at a loss. Neutral on purpose — red is kept for things that broke. */
+.toast.info { border-left: 3px solid var(--text-faint); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.97) } to { opacity: 1; transform: none } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(8px) scale(.97) } }
+
+/* ---------------------------------------------------------------- misc */
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.wrap { flex-wrap: wrap; }
+.scroll-x { overflow-x: auto; }
+
+.news-item { display: block; padding: 9px 0; border-bottom: 1px solid var(--line); text-decoration: none; color: inherit; transition: color var(--fast); }
+.news-item:last-child { border-bottom: 0; }
+.news-item:hover .news-title { color: var(--accent); }
+.news-title { font-size: 13px; line-height: 1.45; transition: color var(--fast); }
+.news-meta { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+
+.disclaimer {
+  margin: 34px auto 0; max-width: 1320px; padding: 14px 18px;
+  font-size: 11.5px; line-height: 1.65; color: var(--text-faint);
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 1180px) {
+  .ticker { gap: 18px; }
+  .ticker-item:nth-child(3) { display: none; }
+}
+@media (max-width: 900px) {
+  .ticker { gap: 16px; }
+  .ticker-item:nth-child(3) { display: none; }
+  .grid-2, .plan { grid-template-columns: 1fr; }
+  main { padding: 16px 12px 36px; }
+  .tabs { overflow-x: auto; }
+}
+@media (max-width: 620px) {
+  .ticker-item:nth-child(2) { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ----------------------------------------------------------------- modal */
+
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 80;
+  display: grid; place-items: center; padding: 20px;
+  background: rgba(4,6,9,.66); backdrop-filter: blur(3px);
+  animation: fade 180ms var(--ease);
+}
+.modal-scrim.is-closing { animation: fade 180ms var(--ease) reverse; }
+
+.modal {
+  width: min(460px, 100%);
+  background: var(--bg-raised); border: 1px solid var(--line-strong);
+  border-radius: 12px; box-shadow: var(--shadow);
+  animation: modal-in 220ms var(--ease);
+  max-height: 88vh; display: flex; flex-direction: column;
+}
+@keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(.985) } to { opacity: 1; transform: none } }
+
+.modal-head { padding: 16px 18px 12px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.modal-body { padding: 0 18px 4px; overflow-y: auto; font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+.modal-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 18px 16px; margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.modal-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 4px; }
+.modal-fields .field { min-width: 0; }
+
+.ticket-line {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px;
+}
+.ticket-line:last-of-type { border-bottom: 0; }
+.ticket-line span:last-child { font-family: var(--mono); color: var(--text); font-weight: 500; }
+
+/* The generic last-child rule outranks the bare .up/.down colour classes, so the
+   ticket's own direction colours have to be restated at matching specificity. */
+.ticket-line span:last-child.up { color: var(--up); }
+.ticket-line span:last-child.down { color: var(--down); }
+
+/* ------------------------------------------------------------- freshness */
+
+.freshness {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; cursor: help; white-space: nowrap;
+}
+.live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--up);
+  box-shadow: 0 0 6px var(--up); flex-shrink: 0;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+.freshness[data-stale="1"] .live-dot { background: var(--warn); box-shadow: 0 0 6px var(--warn); animation: none; }
+.freshness[data-stale="2"] .live-dot { background: var(--down); box-shadow: none; animation: none; }
+@keyframes breathe { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+@media (max-width: 900px) { .freshness { display: none; } }
+
+
+/* ------------------------------------------------------- the account switcher */
+
+.account { position: relative; flex-shrink: 0; }
+
+.account-btn {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0;
+  padding: 5px 26px 5px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg-raised); position: relative; transition: border-color var(--fast), background var(--fast);
+}
+.account-btn:hover { border-color: var(--line-strong); background: var(--bg-hover); }
+.account-btn svg { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
+.account-name { font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em; }
+.account-sub { font-size: 10.5px; color: var(--text-faint); font-family: var(--mono); }
+
+.account-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 268px;
+  background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 5px; animation: rise 160ms var(--ease);
+}
+.account-item {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 0; border-radius: var(--radius-sm); background: transparent;
+  transition: background var(--fast);
+}
+.account-item:hover { background: var(--bg-hover); }
+.account-item.is-on { background: var(--accent-soft); }
+.account-item.is-on .account-item-name { color: var(--accent); }
+.account-item-name { font-size: 12.5px; font-weight: 600; }
+.account-item-meta { font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+.account-manage { border-top: 1px solid var(--line); border-radius: 0; margin-top: 4px; padding-top: 10px;
+  font-size: 12px; color: var(--text-dim); }
+
+/* ------------------------------------------------------------- the profile */
+
+.profile-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 1px; background: var(--line);
+}
+.profile-card {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+  background: var(--bg-panel); border: 0; padding: 14px 16px;
+  transition: background var(--fast), box-shadow var(--fast);
+}
+.profile-card:hover { background: var(--bg-hover); }
+.profile-card.is-on { box-shadow: inset 3px 0 0 var(--accent); background: var(--bg-hover); }
+.profile-card.is-new { color: var(--text-faint); }
+.profile-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.profile-meta { font-size: 11px; color: var(--text-faint); }
+.profile-equity { font-size: 15px; font-weight: 600; font-family: var(--mono); margin-top: 4px; letter-spacing: -0.02em; }
+
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(184px, 1fr)); gap: 8px; }
+.choice {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px;
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  transition: border-color var(--fast), background var(--fast);
+}
+.choice:hover { border-color: var(--line-strong); }
+.choice.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.choice-label { font-size: 12.5px; font-weight: 600; }
+.choice.is-on .choice-label { color: var(--accent); }
+.choice-note { font-size: 11px; color: var(--text-faint); line-height: 1.45; }
+
+.pill-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 12px;
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: 999px;
+  transition: border-color var(--fast), background var(--fast), color var(--fast);
+}
+.pill:hover { border-color: var(--line-strong); }
+.pill.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+.pill.is-on .pill-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+.warn-text { color: var(--warn); }
+
+/* ---------------------------------------------------------------- the review */
+
+.after-strip {
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 11px 13px; display: flex; flex-direction: column; gap: 8px;
+}
+.after-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint);
+}
+
+.next-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+.next-list li { font-size: 13.5px; line-height: 1.6; color: var(--text-dim); }
+.next-list li::marker { color: var(--accent); }
+
+@media (max-width: 900px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  .account-sub { display: none; }
+}
+
+/* =========================================================== plain language */
+
+/* The definitions are always attached; only the invitation to read one is
+   conditional. An experienced user gets a clean screen and the same tooltips. */
+.gloss { cursor: help; border-bottom: 1px dotted transparent; transition: border-color var(--fast), color var(--fast); }
+body[data-plain="1"] .gloss { border-bottom-color: var(--line-strong); }
+.gloss:hover, .gloss:focus { border-bottom-color: var(--accent); color: var(--accent); outline: none; }
+
+.plain-aside {
+  margin: -2px 0 14px; font-size: 12.5px; line-height: 1.6; color: var(--text-dim);
+  max-width: 74ch;
+}
+
+.unit {
+  font-size: 9.5px; letter-spacing: .06em; color: var(--text-faint);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 4px; margin-left: 5px;
+}
+
+/* ------------------------------------------------------------- the rundown */
+
+/* The account in a paragraph, above the numbers rather than instead of them. */
+.rundown {
+  background: linear-gradient(180deg, var(--bg-raised), var(--bg-panel));
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--radius); padding: 15px 18px; margin-bottom: 20px;
+}
+.rundown-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rundown-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint);
+}
+.rundown-profile { font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+.rundown .prose { max-width: 88ch; }
+.rundown-next {
+  display: flex; gap: 9px; align-items: baseline; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--line); font-size: 13px; line-height: 1.6; color: var(--text-dim);
+}
+.rundown-next .btn { margin-left: 6px; vertical-align: middle; }
+
+/* ----------------------------------------------------------------- the fx */
+
+/* The second figure.
+
+   Every amount in this app is dollars. These are the same amount read in whatever
+   currency the profile thinks in, and the styling has one job: make it impossible
+   to mistake the translation for the number. Smaller, dimmer, never bold, always
+   behind an ≈, and never on the same weight scale as the figure it sits under.
+   When the reading currency is USD nothing renders at all — a figure printed
+   twice reads as a second balance, which is the exact confusion being avoided. */
+
+.money-sub {
+  display: block;
+  font-size: 10.5px;
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--text-faint);
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: help;
+}
+.money-sub.is-inline { display: inline; cursor: default; }
+.money-sub[data-stale="1"] { color: var(--warn); }
+
+/* In the top bar the label already sets the column, so the sub is just a third
+   line in the same stack. It hides before the ticker items do on narrow widths —
+   the dollar figure is the one that has to survive. */
+.ticker-sub {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-faint);
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+.ticker-sub[hidden] { display: none; }
+@media (max-width: 1180px) { .ticker-sub { display: none; } }
+
+/* Under a money input, updating live as it is typed. */
+.money-echo {
+  font-size: 11.5px;
+  font-family: var(--mono);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.fx-note {
+  font-size: 10.5px; font-family: var(--mono); color: var(--text-faint);
+  border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; cursor: help; white-space: nowrap;
+}
+.fx-note[data-stale="1"] { color: var(--warn); border-color: rgba(217,164,65,.28); }
+@media (max-width: 900px) { .fx-note { display: none; } }
+
+.icon-btn.has-dot { position: relative; }
+.icon-btn.has-dot::after {
+  content: ''; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--warn); box-shadow: 0 0 6px var(--warn);
+}
+
+.tab.has-badge::after {
+  content: attr(data-badge); margin-left: 6px; font-size: 9.5px; font-weight: 600;
+  background: var(--warn-soft); color: var(--warn); border-radius: 999px; padding: 1px 5px;
+  vertical-align: middle;
+}
+
+.tabs.is-hidden { display: none; }
+
+/* ============================================================ the settings */
+
+.settings { display: grid; grid-template-columns: 190px 1fr; gap: 0; align-items: start; }
+
+.settings-nav {
+  position: sticky; top: 12px; display: flex; flex-direction: column; gap: 1px;
+  padding-right: 18px; border-right: 1px solid var(--line);
+}
+.settings-search { padding-bottom: 10px; }
+.settings-search input {
+  width: 100%; padding: 7px 10px; font-size: 12.5px;
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--text); outline: none; transition: border-color var(--fast);
+}
+.settings-search input:focus { border-color: var(--accent); }
+.settings-search input::placeholder { color: var(--text-faint); }
+
+.settings-tab {
+  display: flex; align-items: center; gap: 8px; text-align: left; width: 100%;
+  padding: 8px 11px; font-size: 12.5px; color: var(--text-dim);
+  background: transparent; border: 0; border-radius: var(--radius-sm);
+  transition: background var(--fast), color var(--fast);
+}
+.settings-tab:hover { background: var(--bg-hover); color: var(--text); }
+.settings-tab.is-on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.settings-badge {
+  margin-left: auto; font-size: 9.5px; font-weight: 600; font-family: var(--mono);
+  background: var(--warn-soft); color: var(--warn); border-radius: 999px; padding: 1px 6px;
+}
+
+.settings-body { padding-left: 22px; min-width: 0; }
+.settings-bar {
+  display: flex; align-items: center; gap: 8px; padding-bottom: 14px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-bar .spacer { margin-left: auto; }
+.settings-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.settings-content { padding-top: 18px; }
+.settings-content .section-head:first-child { margin-top: 0; }
+
+/* The sheet: the same surface, over whatever you were looking at. */
+.settings-scrim {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(4,6,9,.6); backdrop-filter: blur(3px);
+  animation: fade 180ms var(--ease);
+}
+.settings-sheet {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 71;
+  width: min(940px, 94vw); overflow-y: auto;
+  background: var(--bg); border-left: 1px solid var(--line-strong);
+  box-shadow: -20px 0 60px rgba(0,0,0,.5);
+  padding: 22px 26px 60px;
+  animation: slide-in 260ms var(--ease);
+}
+.settings-close { position: absolute; top: 14px; right: 16px; z-index: 2; }
+.settings.is-sheet { grid-template-columns: 176px 1fr; }
+.settings.is-sheet .settings-nav { top: 0; }
+
+@media (max-width: 860px) {
+  .settings, .settings.is-sheet { grid-template-columns: 1fr; }
+  .settings-nav { position: static; flex-direction: row; flex-wrap: wrap;
+    border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 12px; }
+  .settings-search { flex: 1 0 100%; }
+  .settings-body { padding-left: 0; padding-top: 14px; }
+}
+
+/* ============================================================ the wizard */
+
+.wizard { max-width: 620px; margin: 40px auto 0; animation: rise 320ms var(--ease); }
+.wizard.is-wide { max-width: 780px; margin-top: 26px; }
+
+.wizard-rail { display: flex; align-items: center; gap: 14px; margin-bottom: 30px; }
+.wizard-progress {
+  flex: 1; height: 3px; border-radius: 2px; background: var(--bg-hover); overflow: hidden;
+}
+.wizard-progress div { height: 100%; background: var(--accent); border-radius: 2px; transition: width 380ms var(--ease); }
+.wizard-step { font-size: 11px; color: var(--text-faint); font-family: var(--mono); white-space: nowrap; }
+.wizard-skip {
+  font-size: 11.5px; color: var(--text-faint); background: none; border: 0; padding: 0;
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-strong);
+  transition: color var(--fast);
+}
+.wizard-skip:hover { color: var(--text-dim); }
+
+.wizard-question { font-size: 25px; letter-spacing: -0.025em; line-height: 1.24; }
+.wizard-hint { font-size: 13.5px; line-height: 1.65; color: var(--text-dim); margin: 12px 0 0; max-width: 60ch; }
+
+.wizard-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 26px; }
+.wizard-choice {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 14px 16px;
+  background: var(--bg-panel); border: 1px solid var(--line); border-radius: var(--radius);
+  transition: border-color var(--fast), background var(--fast), transform var(--fast);
+}
+.wizard-choice:hover { border-color: var(--line-strong); background: var(--bg-hover); transform: translateX(2px); }
+.wizard-choice.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.wizard-choice-label { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.wizard-choice.is-on .wizard-choice-label { color: var(--accent); }
+.wizard-choice-note { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+
+.wizard-money { margin-top: 26px; }
+
+/* The setup's key question, laid out as two columns: what a key adds on the left,
+   what runs without one on the right. Side by side rather than stacked, because
+   the whole point is that they are read against each other. */
+.key-step { margin-top: 4px; }
+.key-col-head {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-faint); margin-bottom: 8px;
+}
+.key-list { margin: 0; padding-left: 17px; }
+.key-list li { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; margin-bottom: 7px; }
+@media (max-width: 700px) { .key-step .grid-2 { grid-template-columns: 1fr; } }
+
+.wizard-amount {
+  display: flex; align-items: baseline; gap: 8px;
+  border-bottom: 2px solid var(--line-strong); padding-bottom: 8px;
+  transition: border-color var(--fast);
+}
+.wizard-amount:focus-within { border-color: var(--accent); }
+.wizard-currency { font-size: 24px; color: var(--text-faint); font-family: var(--mono); }
+.wizard-amount input {
+  flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text);
+  font-size: 34px; font-weight: 600; font-family: var(--mono); letter-spacing: -0.03em;
+}
+.wizard-amount input::-webkit-outer-spin-button,
+.wizard-amount input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.wizard-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 32px; }
+body.in-setup { padding-bottom: 40px; }
+
+/* --------------------------------------------------------- the reality check */
+
+.flag-card {
+  border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius); background: var(--bg-panel);
+  padding: 15px 18px; margin-top: 14px;
+}
+.flag-card.down { border-left-color: var(--down); }
+.flag-card.warn { border-left-color: var(--warn); }
+.flag-card.accent { border-left-color: var(--accent); }
+.flag-card.up { border-left-color: var(--up); }
+.flag-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; flex-wrap: wrap; }
+.flag-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.flag-consequence {
+  display: flex; gap: 8px; align-items: baseline; margin-top: 12px; padding-top: 11px;
+  border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.6; color: var(--text-faint);
+}
+
+.rec-card {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-panel); padding: 15px 18px; margin-top: 12px;
+}
+.rec-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+.rec-values { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 12px; }
+.rec-option {
+  display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 13px;
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  transition: border-color var(--fast), background var(--fast);
+}
+.rec-option:hover { border-color: var(--line-strong); }
+.rec-option.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.rec-option-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+.rec-option.is-on .rec-option-label { color: var(--accent); }
+.rec-option-value { font-size: 13.5px; font-weight: 600; font-family: var(--mono); letter-spacing: -0.01em; }
+
+@media (max-width: 620px) { .rec-values { grid-template-columns: 1fr; } }
+
+/* ============================================================ the learning */
+
+.lesson {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-panel); overflow: hidden; margin-top: 12px;
+}
+.lesson.proposed { border-color: rgba(217,164,65,.3); }
+.lesson.applied { box-shadow: inset 3px 0 0 var(--up); }
+/* Set back by surface, not opacity: opacity took the faint text inside to
+   2.5:1, and the words are the part still worth reading. */
+.lesson.dismissed, .lesson.retired, .lesson.watching { background: var(--bg-sunken); border-style: dashed; }
+
+.lesson-head {
+  display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px;
+  border-bottom: 1px solid var(--line); background: var(--bg-raised);
+}
+.lesson-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.4; }
+.lesson-meta {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 11px; color: var(--text-faint); margin-top: 5px;
+}
+.lesson-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+
+.lesson-change {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--bg-sunken); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  padding: 11px 14px;
+}
+.lesson-change-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); }
+.lesson-change-body { font-size: 13px; font-family: var(--mono); color: var(--text); line-height: 1.5; }
+
+.lesson-evidence .next-list li { font-size: 12.5px; color: var(--text-faint); }
+
+/* ==================================================== the analyst's own panel */
+
+.diagnosis {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-sunken); padding: 14px 16px; margin-top: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.diagnosis-head { display: flex; align-items: center; gap: 10px; }
+.diagnosis-head .spacer { margin-left: auto; }
+
+.finding {
+  border-left: 2px solid var(--line-strong); padding: 2px 0 2px 13px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.finding.down { border-left-color: var(--down); }
+.finding.warn { border-left-color: var(--warn); }
+.finding.up { border-left-color: var(--up); }
+.finding.ghost { border-left-color: var(--line-strong); }
+.finding-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.finding-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.finding-line {
+  display: grid; grid-template-columns: 68px 1fr; gap: 10px;
+  font-size: 12.5px; line-height: 1.6; color: var(--text-dim);
+}
+.finding-key {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-faint); padding-top: 3px;
+}
+@media (max-width: 620px) { .finding-line { grid-template-columns: 1fr; gap: 2px; } }
+
+.meter-row { display: flex; flex-direction: column; gap: 5px; }
+.meter-row-head { display: flex; justify-content: space-between; font-size: 11.5px; }
+
+/* Keys are never echoed back, but a password field still gets monospaced so a
+   paste that picked up a stray character is visible. */
+#apiKeyInput { font-family: var(--mono); letter-spacing: .04em; }
+
+/* ========================================================== the session tab */
+
+.session-badge {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  padding: 4px 10px; font-size: 11.5px; font-family: var(--mono);
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--bg-raised); color: var(--text-dim);
+  transition: border-color var(--fast), color var(--fast);
+}
+.session-badge:hover { border-color: var(--accent); color: var(--text); }
+.session-badge[data-tone="up"] { color: var(--up); border-color: rgba(63,178,127,.3); }
+.session-badge[data-tone="down"] { color: var(--down); border-color: rgba(217,96,92,.3); }
+.session-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 6px currentColor; animation: breathe 2.4s ease-in-out infinite;
+}
+@media (max-width: 1080px) { .session-badge span:last-child { display: none; } }
+
+.session-bars { display: flex; flex-direction: column; gap: 13px; margin-top: 18px; }
+.session-bar { display: flex; flex-direction: column; gap: 5px; }
+.session-bar-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 11.5px; color: var(--text-faint);
+}
+.session-bar-head .num { font-family: var(--mono); }
+
+#clock { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------ the model picker */
+
+.model-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.model-card {
+  display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px 14px;
+  background: var(--bg-sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  transition: border-color var(--fast), background var(--fast);
+}
+.model-card:hover { border-color: var(--line-strong); }
+.model-card.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.model-name { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+.model-card.is-on .model-name { color: var(--accent); }
+.model-price { font-size: 11px; font-family: var(--mono); color: var(--text-dim); }
+.model-note { font-size: 11.5px; line-height: 1.5; color: var(--text-faint); }
+
+/* ------------------------------------------------ the catch-up dialog ----- */
+/* Shown once on launch when brackets fired while the app was shut. Reads as a
+   statement of record, not an alert: the fills are correct, they just were not
+   watched happen. */
+
+.rec-list {
+  margin: 14px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+
+.rec-row { padding: 9px 11px; border-bottom: 1px solid var(--line); }
+.rec-row:last-child { border-bottom: 0; }
+
+.rec-row-head {
+  display: flex; align-items: baseline; gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rec-trigger {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line-strong);
+}
+.rec-trigger.down { color: var(--down); background: var(--down-soft); }
+.rec-trigger.up   { color: var(--up);   background: var(--up-soft); }
+
+.rec-pnl { margin-left: auto; font-weight: 600; }
+
+.rec-row-detail { font-size: 11.5px; margin-top: 2px; }
+
+.rec-total {
+  margin-top: 10px; padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A refused position is the one thing here that wants the principal to act. */
+.rec-flags {
+  margin-top: 12px; padding: 10px 11px;
+  border: 1px solid var(--warn); border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+}
+.rec-flags p { margin: 0 0 6px; font-size: 12.5px; }
+.rec-flags p:last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------ read-only ledger alarm --- */
+/* Deliberately hard to ignore and impossible to dismiss. It means the balance on
+   screen is not the account's balance. */
+
+.ledger-alarm {
+  margin: 12px 18px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--down);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--down-soft);
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.ledger-alarm strong { color: var(--down); font-size: 13px; }
+
+/* `hidden` alone loses to the `display: grid` above — without this the alarm sits
+   in the header as an empty red box on every launch. */
+.ledger-alarm[hidden] { display: none; }
+
+/* ------------------------------------------------------ the tooltip ------- */
+/* Six kinds of element here carry `cursor: help` and about forty carry a title.
+   All of them used to be answered by the OS bubble — a second of waiting, nothing
+   at all for a keyboard, and no way to ask on purpose. This is that answer,
+   owned by the app: fast, readable, and reachable by tab and by tap. */
+
+.tip {
+  position: fixed; z-index: 200;
+  padding: 9px 11px;
+  font-size: 12.5px; line-height: 1.5;
+  color: var(--text); background: var(--bg-raised);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  pointer-events: none;
+  opacity: 0; transform: translateY(-2px);
+  transition: opacity 120ms var(--ease), transform 120ms var(--ease);
+}
+.tip[data-above="1"] { transform: translateY(2px); }
+.tip.is-in { opacity: 1; transform: none; }
+.tip[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tip { transition: none; transform: none; }
+}
+
+/* The affordance was always here; now it leads somewhere, so it is worth seeing. */
+.gloss:focus-visible, .sim-badge:focus-visible, .freshness:focus-visible, .fx-note:focus-visible {
+  outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 3px;
+}
+
+/* ------------------------------------------------- exchange clocks (topbar)
+ *
+ * The board spans two exchanges six and a half hours apart, so "the market is
+ * closed" stopped being a sentence with one meaning. A dot per venue, lit when
+ * that exchange is trading — small enough to ignore, specific enough to answer
+ * the question a Swedish morning raises. Hidden entirely when only one exchange
+ * is in play, because then the old single badge was never ambiguous.
+ */
+.clocks {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.clock-pill[data-open="1"] { color: var(--text); }
+
+.clock-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-strong, var(--line));
+  flex: none;
+}
+
+.clock-pill[data-open="1"] .clock-dot {
+  background: var(--up);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--up) 22%, transparent);
+}
+
+/* A grid that takes as many columns as fit, for the market backdrop — two reads
+ * when the profile trades one board, three when it trades both, one on a narrow
+ * window. `.grid-2` is kept for the places where two is the shape, not a count. */
+.grid-auto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+/* The trade-type picker sits above the results and changes what they mean, so it
+ * reads as a control rather than as another panel of findings. */
+.style-picker .range-tabs { flex: none; }
+
+/* ---------------------------------------------------------------- predict */
+
+/* Two sides of one binary market, side by side. They are deliberately not
+   styled as up/down green and red: "Up" here is an outcome you can buy, not a
+   direction your position is going, and colouring it like a P/L invites reading
+   a 72¢ Up contract as a profit. */
+.predict-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.predict-side {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg-raised);
+}
+
+.predict-side-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.predict-side-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.predict-side-price {
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.predict-side-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.predict-bet:hover { background: rgba(255, 255, 255, 0.03); }
+
+@media (max-width: 640px) {
+  .predict-sides { grid-template-columns: 1fr; }
+}
+
+/* One line per reason a window was passed on. `.meter-row` is a column flex and
+   stacks these, which is not what a label-and-count pair wants. */
+.predict-skip {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 7px 0;
+  font-size: 12.5px;
+  border-top: 1px solid var(--line);
+}
+
+.predict-skip:first-of-type { border-top: 0; }
+
+/* One venue of the consolidated tape, and whether it is printing. Read at a glance
+   rather than out of the sentence underneath, because the thing worth noticing is a
+   venue dropping out — which changes the tape from a median to a mean of two and is
+   otherwise a detail buried in a paragraph. */
+.predict-venue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.predict-venue::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.predict-venue.live {
+  color: var(--up);
+  border-color: color-mix(in srgb, var(--up) 35%, var(--line));
+}
+
+.predict-venue.out {
+  color: var(--warn, var(--down));
+  border-color: color-mix(in srgb, var(--warn, var(--down)) 30%, var(--line));
+  opacity: 0.75;
+}
+
+.hint.warn-text { color: var(--warn, var(--down)); }
+
+/* The live window tracker. Two panes on one time axis: what settles the market,
+   and what the market thinks about it. Given a height rather than an aspect ratio
+   because `preserveAspectRatio="none"` stretches the drawing to whatever box it is
+   handed, and a chart that changes shape with the window width is a chart whose
+   slopes mean something different at every size. */
+/* Scales uniformly. The first version set `preserveAspectRatio="none"` and a fixed
+   pixel height, which squeezed a 720-unit viewBox into a 1300px panel — a horizontal
+   stretch of nearly two, applied to every stroke and every label. Text drawn inside
+   an SVG is stretched by that transform like anything else, which is most of what
+   made the chart look wrong. `height: auto` lets the viewBox decide the shape. */
+.predict-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-tick {
+  fill: var(--text-faint);
+  font-size: 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.chart-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.chart-key i {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 1px;
+}
+
+/* The three numbers a five-minute market is about, at the size they deserve. */
+.predict-head-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.predict-big {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-top: 4px;
+}
+
+/* Buying by hand. Sized like something you are meant to press, and coloured by
+   side rather than by outcome — these are two directions, not a good one and a
+   bad one. */
+.predict-buy {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.predict-side-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 14px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.predict-side-btn.up:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--up) 16%, transparent);
+  border-color: var(--up);
+}
+
+.predict-side-btn.down:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--down) 16%, transparent);
+  border-color: var(--down);
+}
+
+.predict-side-btn:disabled { opacity: 0.4; cursor: default; }
+
+.predict-stakes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+/* Everything that is a reason rather than a fact. Folded away by default so the
+   decision is not competing with eleven panels of equal weight. */
+.predict-details > summary {
+  cursor: pointer;
+  margin-top: 18px;
+  padding: 10px 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.predict-details > summary::-webkit-details-marker { display: none; }
+.predict-details > summary::before { content: '▸ '; }
+.predict-details[open] > summary::before { content: '▾ '; }
+.predict-details > summary:hover { color: var(--text); }
+
+/* Rows outside the profile's universe, and stages not reached yet. Shown for
+   context, so the text steps down to --text-faint — still readable — instead of
+   the whole row fading to 1.6:1 under opacity. */
+tr.is-outside td, tr.is-outside .sym-ticker, tr.is-outside .sym-name, tr.is-outside .num,
+tr.is-outside .up, tr.is-outside .down { color: var(--text-faint); }
+tr.is-outside .meter-fill, tr.is-outside .chip { filter: grayscale(1); }
+.stage.is-todo, .stage.is-todo .faint { color: var(--text-faint); }
